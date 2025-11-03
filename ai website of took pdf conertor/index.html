@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FileForge — PDF & Image Tools</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0f1724;--card:#0b1220;--muted:#9aa6b2;--accent:#06b6d4;--accent-2:#7c3aed;--success:#10b981;--danger:#ef4444;}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:linear-gradient(180deg,#071024 0%,#07142a 50%,#0b1220 100%);color:#e6eef6;display:flex;justify-content:center;align-items:flex-start;padding:20px}
+.wrap{width:100%;max-width:1100px}
+header{display:flex;align-items:center;gap:16px;margin-bottom:20px}
+.logo{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,var(--accent),var(--accent-2));padding:10px 14px;border-radius:12px;box-shadow:0 6px 30px rgba(7,12,20,0.6)}
+.logo h1{margin:0;font-size:16px;font-weight:700;color:white}
+.logo p{margin:0;font-size:12px;color:rgba(255,255,255,0.9)}
+.card{background:linear-gradient(180deg,var(--card),#071728);border-radius:14px;padding:20px;box-shadow:0 10px 50px rgba(2,6,23,0.6);}
+.tabs{display:flex;gap:10px;margin-bottom:14px}
+.tab{flex:1;padding:10px;border-radius:10px;text-align:center;cursor:pointer;font-weight:600;background:rgba(255,255,255,0.03);transition:0.2s}
+.tab.active{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#022;}
+.panel{background:linear-gradient(180deg, rgba(255,255,255,0.015), transparent);padding:14px;border-radius:10px;margin-top:10px}
+.files{background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);padding:8px;border-radius:10px;max-height:240px;overflow:auto;margin-top:10px}
+.file-item{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;margin-bottom:8px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));transition:0.2s}
+.file-item:hover{transform:translateY(-2px);box-shadow:0 4px 20px rgba(6,182,212,0.1)}
+.thumb{width:60px;height:44px;border-radius:6px;flex:0 0 60px;overflow:hidden;background:linear-gradient(180deg,#0b1220,#071124);display:flex;align-items:center;justify-content:center}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.file-info{flex:1;min-width:0}
+.file-info strong{display:block;font-size:13px}
+.file-info .muted{font-size:12px;color:var(--muted)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+button.primary{background:linear-gradient(90deg,var(--accent),var(--accent-2));border:0;padding:12px 14px;border-radius:10px;color:#022;cursor:pointer;font-weight:700;box-shadow:0 8px 30px rgba(12,18,30,0.6);transition:0.2s}
+button.primary:hover{transform:translateY(-2px)}
+button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:10px;border-radius:10px;color:var(--muted);cursor:pointer;transition:0.2s}
+button.ghost:hover{background:rgba(255,255,255,0.02)}
+.previewCanvas{width:100%;height:300px;background:linear-gradient(180deg,#071826 0%, #041018 100%);display:flex;align-items:center;justify-content:center;border-radius:8px;color:var(--muted);margin-top:10px;transition:0.3s}
+.previewCanvas img, .previewCanvas canvas{max-width:100%;max-height:100%;border-radius:6px;}
+.progressWrap{height:8px;background:rgba(255,255,255,0.03);border-radius:999px;overflow:hidden;width:100%;margin-top:8px}
+.progress{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .18s}
+@media (max-width:900px){.tabs{flex-direction:column}.tab{flex:auto}}
+</style>
+<script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/browser-image-compression/dist/browser-image-compression.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.9.179/pdf.min.js"></script>
+<script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.9.179/pdf.worker.min.js';}</script>
+</head>
+<body>
+<div class="wrap">
+<header>
+<div class="logo">
+<h1>FileForge</h1>
+<p>PDF & Image Tools — client-side</p>
+</div>
+</header>
+<div class="card">
+<div class="tabs">
+<div class="tab active" data-tool="img2pdf">Image → PDF</div>
+<div class="tab" data-tool="pdf2img">PDF → Image</div>
+<div class="tab" data-tool="compress">Compress PDF</div>
+</div>
+<div class="panel" id="toolPanel">
+<input type="file" id="fileInput" multiple style="display:none" accept="image/*,application/pdf">
+<div class="actions">
+<button id="addBtn" class="ghost">Add Files</button>
+<button id="processBtn" class="primary">Process</button>
+<button id="clearBtn" class="ghost">Clear</button>
+</div>
+<div class="files" id="filesList"></div>
+<div class="previewCanvas" id="preview">No preview</div>
+<div class="progressWrap"><div class="progress" id="progress"></div></div>
+</div>
+</div>
+</div>
+<script>
+(async function(){
+const tabs=document.querySelectorAll('.tab');
+let activeTool='img2pdf';
+const fileInput=document.getElementById('fileInput');
+const addBtn=document.getElementById('addBtn');
+const processBtn=document.getElementById('processBtn');
+const clearBtn=document.getElementById('clearBtn');
+const filesList=document.getElementById('filesList');
+const preview=document.getElementById('preview');
+const progressBar=document.getElementById('progress');
+let currentFiles=[];
+
+// Tab switching
+tabs.forEach(tab=>tab.onclick=()=>{
+  tabs.forEach(t=>t.classList.remove('active'));
+  tab.classList.add('active');
+  activeTool=tab.dataset.tool;
+  preview.innerHTML='No preview';
+});
+
+// File input wiring
+addBtn.onclick=()=>fileInput.click();
+fileInput.onchange=(e)=>{ Array.from(e.target.files).forEach(f=>currentFiles.push(f)); renderFiles(); e.target.value=''; };
+clearBtn.onclick=()=>{ currentFiles=[]; renderFiles(); };
+
+// utils
+function humanBytes(n){ if(!n&&n!==0) return '—'; if(n===0) return '0 B'; const u=['B','KB','MB','GB','TB']; let i=0; let val=n; while(val>=1024&&i<u.length-1){val/=1024;i++;} return val.toFixed(2)+' '+u[i]; }
+function sanitize(name){ return String(name).replace(/[^a-z0-9_\-\.]/ig,'_'); }
+function setProgress(p){ progressBar.style.width = Math.max(0,Math.min(100,p)) + '%'; }
+function downloadBlob(blob,name){ const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name||'output'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),15000); }
+async function canvasToJpegBlob(canvas, q=0.9){ return await new Promise(res=>canvas.toBlob(res,'image/jpeg',q)); }
+async function imageFileToJpegBlob(file,maxDim=2000,q=0.9){
+  const url = URL.createObjectURL(file);
+  try{
+    const img = await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=url; });
+    let w=img.width,h=img.height; const scale=Math.min(1, maxDim/Math.max(w,h)); w=Math.round(w*scale); h=Math.round(h*scale);
+    const c=document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+    return await canvasToJpegBlob(c,q);
+  }finally{ URL.revokeObjectURL(url); }
+}
+
+// UI rendering
+function renderFiles(){
+  filesList.innerHTML=''; preview.innerHTML='No preview';
+  currentFiles.forEach((f,i)=>{
+    const div=document.createElement('div'); div.className='file-item';
+    const thumb=document.createElement('div'); thumb.className='thumb';
+    if(/^image/.test(f.type)){ const img=document.createElement('img'); img.src=URL.createObjectURL(f); img.onload=()=>URL.revokeObjectURL(img.src); thumb.appendChild(img); }
+    else { thumb.textContent='PDF'; }
+    div.appendChild(thumb);
+    const info=document.createElement('div'); info.className='file-info'; info.innerHTML=`<strong>${f.name}</strong><div class="muted">${f.type} • ${humanBytes(f.size)}</div>`;
+    const rm=document.createElement('button'); rm.className='ghost'; rm.textContent='Remove'; rm.onclick=()=>{ currentFiles.splice(i,1); renderFiles(); };
+    div.appendChild(info); div.appendChild(rm);
+    filesList.appendChild(div);
+  });
+  // preview first file
+  if(currentFiles[0]){
+    const f=currentFiles[0];
+    if(/^image/.test(f.type)){
+      preview.innerHTML=''; const img=document.createElement('img'); img.src=URL.createObjectURL(f); img.onload=()=>URL.revokeObjectURL(img.src); preview.appendChild(img);
+    } else if(f.type==='application/pdf'){
+      preview.innerHTML='<div class="muted">Rendering first PDF page...</div>';
+      (async()=>{
+        try{
+          const arr = await f.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({data:arr}).promise;
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({ scale: 1.2 });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.floor(viewport.width); canvas.height = Math.floor(viewport.height);
+          const ctx = canvas.getContext('2d');
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          preview.innerHTML=''; preview.appendChild(canvas);
+        }catch(e){
+          preview.innerHTML='<div class="muted">Preview unavailable</div>';
+        }
+      })();
+    }
+  }
+}
+
+// Main processing (fix for buttons not working)
+processBtn.onclick = async ()=>{
+  if(!currentFiles.length){ alert('Add files first'); return; }
+  processBtn.disabled = true; addBtn.disabled = true; clearBtn.disabled = true; setProgress(0);
+
+  try{
+    if(activeTool === 'img2pdf'){
+      // images -> single PDF
+      const pdfDoc = await PDFLib.PDFDocument.create();
+      for(let i=0;i<currentFiles.length;i++){
+        const f = currentFiles[i];
+        if(!/^image/.test(f.type)) continue;
+        // compress image client-side (if library available)
+        let imgFile = f;
+        try{ imgFile = await imageCompression(f, { maxWidthOrHeight: 1600, initialQuality: 0.7, useWebWorker:true }); }catch(e){}
+        const bytes = await imgFile.arrayBuffer();
+        let img;
+        try{ img = await pdfDoc.embedJpg(bytes); } catch(e){ img = await pdfDoc.embedPng(bytes); }
+        const page = pdfDoc.addPage([img.width, img.height]);
+        page.drawImage(img, { x:0, y:0, width: img.width, height: img.height });
+        setProgress( Math.round(((i+1)/currentFiles.length)*80) );
+      }
+      const out = await pdfDoc.save();
+      downloadBlob(new Blob([out],{type:'application/pdf'}),'images-to-pdf.pdf');
+      setProgress(100);
+    } else if(activeTool === 'pdf2img'){
+      // pdf -> individual jpg files
+      if(!window.pdfjsLib){ alert('PDF.js not loaded'); return; }
+      let totalPages = 0;
+      // first count pages to show progress
+      for(const f of currentFiles){ if(f.type==='application/pdf'){ const arr = await f.arrayBuffer(); const pdf = await pdfjsLib.getDocument({data:arr}).promise; totalPages += pdf.numPages; } else if(/^image/.test(f.type)){ totalPages += 1; } }
+      let done = 0;
+      for(const f of currentFiles){
+        if(f.type==='application/pdf'){
+          const arr = await f.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({data:arr}).promise;
+          for(let p=1;p<=pdf.numPages;p++){
+            const page = await pdf.getPage(p);
+            const viewport = page.getViewport({ scale: 2 });
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.floor(viewport.width); canvas.height = Math.floor(viewport.height);
+            const ctx = canvas.getContext('2d');
+            await page.render({ canvasContext: ctx, viewport }).promise;
+            const blob = await canvasToJpegBlob(canvas, 0.9);
+            const name = sanitize(f.name.replace(/\.pdf$/i,'')) + `_page${p}.jpg`;
+            downloadBlob(blob, name);
+            done++; setProgress( Math.round((done/totalPages)*100) ); await new Promise(r=>setTimeout(r,80));
+          }
+        } else if(/^image/.test(f.type)){
+          const blob = await imageFileToJpegBlob(f, 2000, 0.9);
+          const name = sanitize(f.name.replace(/\.[^.]+$/,'')) + '.jpg';
+          downloadBlob(blob, name);
+          done++; setProgress( Math.round((done/totalPages)*100) ); await new Promise(r=>setTimeout(r,80));
+        }
+      }
+    } else if(activeTool === 'compress'){
+      // Simple PDF re-save (may reduce file size slightly)
+      const outDoc = await PDFLib.PDFDocument.create();
+      let idx = 0;
+      for(const f of currentFiles){
+        if(f.type !== 'application/pdf') { idx++; continue; }
+        const bytes = await f.arrayBuffer();
+        const src = await PDFLib.PDFDocument.load(bytes);
+        const pages = await outDoc.copyPages(src, src.getPageIndices());
+        pages.forEach(p=>outDoc.addPage(p));
+        idx++; setProgress( Math.round((idx/currentFiles.length)*80) );
+      }
+      const out = await outDoc.save();
+      downloadBlob(new Blob([out],{type:'application/pdf'}),'compressed.pdf');
+      setProgress(100);
+    }
+  }catch(err){
+    console.error(err);
+    alert('Processing failed: ' + (err && err.message ? err.message : err));
+    setProgress(0);
+  }finally{
+    processBtn.disabled = false; addBtn.disabled = false; clearBtn.disabled = false;
+  }
+};
+
+renderFiles();
+})();
+</script>
+</body>
+</html>
